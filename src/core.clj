@@ -17,8 +17,8 @@
 
 (defn parse-record [record-text]
   (let [text (remove-common-indent record-text)
-        lines (->> (str/split-lines text)
-                   (remove str/blank?))]
+        lines (->> (clojure.string/split-lines text)
+                   (remove clojure.string/blank?))]
     (loop [remaining-lines lines
            current-key nil
            acc {}]
@@ -26,26 +26,27 @@
         acc
         (let [line (first remaining-lines)
               rest-lines (rest remaining-lines)]
-          (if (or (str/starts-with? line " ")
-                  (str/starts-with? line ">")
-                  (str/starts-with? line ";"))
-            ;; continuation line: append to current key's value
+          (if (or (clojure.string/starts-with? line " ")
+                  (clojure.string/starts-with? line ">")
+                  (clojure.string/starts-with? line ";"))
+            ;; continuation line: append to current key's value, keeping leading char
             (if current-key
               (let [old-val (get acc current-key "")
-                    continuation-text (str/trim (subs line 1))
+                    continuation-text (str (subs line 0 1) (clojure.string/trim (subs line 1)))
                     new-val (str old-val "\n" continuation-text)
                     new-acc (assoc acc current-key new-val)]
                 (recur rest-lines current-key new-acc))
-              ;; no key yet, skip line
+              ;; no current key yet, skip line
               (recur rest-lines current-key acc))
             ;; new key line: parse key and initial value
             (let [[_ quoted-key rest] (re-matches #"^'([^']+)'\s*(.*)$" line)
                   [key val] (if quoted-key
                               [quoted-key rest]
-                              (let [[k & v] (str/split line #"\s+" 2)]
+                              (let [[k & v] (clojure.string/split line #"\s+" 2)]
                                 [k (first v)]))
                   new-acc (assoc acc key (or val ""))]
               (recur rest-lines key new-acc))))))))
+
 
 
 (defn remove-bom [s]
