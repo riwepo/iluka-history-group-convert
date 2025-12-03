@@ -1,6 +1,7 @@
 (ns core
   (:require [clojure.string :as str]
             [clojure.set :as set]
+            [clojure.pprint :refer [pprint]]
             [clojure.java.io :as io]
             [clojure.data.csv :as csv]))
 
@@ -107,7 +108,8 @@
 
 
 (def expected-fields
-  ["Acquisition Date",
+  ["Acquisition Comments",
+  "Acquisition Date",
   "Acquisition Type",
   "Brief Description",
   "Classification",
@@ -115,27 +117,55 @@
   "Condition",
   "Condition Date",
   "Condition Details",
+  "Conservation Report",
   "Country Made",
+  "Country Used",
   "Current Location",
   "Date Catalogued",
+  "Date Donor Form Sign",
   "Date Entered into DB",
   "Date Made",
   "Date Modified",
   "Date Used",
   "Donor Name",
+  "Edition",
   "File",
   "History of Object",
   "Image",
+  "Inscriptions",
+  "Journal Title",
+  "Maker Details",
   "Maker Name",
   "Materials",
   "Museum Code",
   "Name of Cataloguer",
+  "Name of Data Enterer",
+  "Negative Number",
   "Object Name",
+  "Other Information",
+  "Other Number",
+  "Pages",
+  "Physical Description",
+  "Place of Publication",
+  "Printer",
   "Production Method",
+  "Publisher",
+  "Purchase Price",
+  "References",
+  "Restrictions",
+  "Region-State Made",
+  "Region-State Used",
   "Registration Number",
+  "Series Name",
+  "Series Number",
   "Size",
+  "Storage Comments",
+  "Storage Location",
   "Subjects",
-  "Title"])
+  "Supplementary File",
+  "Title"
+  "Town-Other Made"
+  "Town-Other Used"])
 
 
 
@@ -181,8 +211,13 @@
   (map parse-record text-chunks)
   (doseq [line (clojure.string/split-lines non-indented-test-chunk)]
     (println (pr-str line)))
-  (parse-file-into-records expected-fields "C:\\Temp\\Iluka History Group\\test.dmp")
-
+  (def records (:records (parse-file-into-records expected-fields "C:\\Temp\\Iluka History Group\\museum.dmp")))
+  (def test-records [{"fred" 1 "bill" 2}{"fred" 1 "bill" 2}])
+  (def one-record (take 1 records))
+  (count one-record)
+  one-record
+  (write-csv "C:\\Temp\\Iluka History Group\\museum.csv" records)
+  (pprint records)
   nil)
 
 
