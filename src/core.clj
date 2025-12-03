@@ -5,7 +5,11 @@
             [clojure.java.io :as io]
             [clojure.data.csv :as csv]))
 
-(defn remove-common-indent [s]
+(defn remove-common-indent
+  "Removes the common leading whitespace from all lines in the string `s`.
+   Useful for handling indented multiline strings.
+   Returns the unindented string."
+  [s]
   (let [lines (str/split-lines s)
         non-blank-lines (remove str/blank? lines)
         indents (map #(count (re-find #"^\s*" %)) non-blank-lines)
@@ -16,10 +20,15 @@
                  %))
          (str/join "\n"))))
 
-(defn parse-record [record-text]
+(defn parse-record
+  "Parses a chunk of text into a map of key-value pairs.
+   - `record-text`: string containing a single record with lines.
+   Handles multiline values where subsequent lines start with space, '>', or ';'.
+   Preserves leading characters in continuation lines."
+  [record-text]
   (let [text (remove-common-indent record-text)
-        lines (->> (clojure.string/split-lines text)
-                   (remove clojure.string/blank?))]
+        lines (->> (str/split-lines text)
+                   (remove str/blank?))]
     (loop [remaining-lines lines
            current-key nil
            acc {}]
@@ -27,13 +36,13 @@
         acc
         (let [line (first remaining-lines)
               rest-lines (rest remaining-lines)]
-          (if (or (clojure.string/starts-with? line " ")
-                  (clojure.string/starts-with? line ">")
-                  (clojure.string/starts-with? line ";"))
+          (if (or (str/starts-with? line " ")
+                  (str/starts-with? line ">")
+                  (str/starts-with? line ";"))
             ;; continuation line: append to current key's value, keeping leading char
             (if current-key
               (let [old-val (get acc current-key "")
-                    continuation-text (str (subs line 0 1) (clojure.string/trim (subs line 1)))
+                    continuation-text (str (subs line 0 1) (str/trim (subs line 1)))
                     new-val (str old-val "\n" continuation-text)
                     new-acc (assoc acc current-key new-val)]
                 (recur rest-lines current-key new-acc))
@@ -43,44 +52,55 @@
             (let [[_ quoted-key rest] (re-matches #"^'([^']+)'\s*(.*)$" line)
                   [key val] (if quoted-key
                               [quoted-key rest]
-                              (let [[k & v] (clojure.string/split line #"\s+" 2)]
+                              (let [[k & v] (str/split line #"\s+" 2)]
                                 [k (first v)]))
                   new-acc (assoc acc key (or val ""))]
               (recur rest-lines key new-acc))))))))
 
 
 
-(defn remove-bom [s]
+(defn remove-bom
+  "Removes Byte Order Mark (U+FEFF) from the start of string `s` if present."
+  [s]
   (if (and (seq s) (= \uFEFF (first s)))
     (subs s 1)
     s))
 
-(defn split-file-into-records [filepath]
+(defn split-file-into-records
+  "Reads a file at `filepath`, removes BOM if present, and splits content into chunks
+   separated by lines containing only '$'. Returns a sequence of record text chunks."
+  [filepath]
   (let [content (-> filepath slurp remove-bom)
-        records (->> (clojure.string/split content #"\n\s*\$\s*\n")
-                     (map clojure.string/trim)
-                     (remove clojure.string/blank?))]
+        records (->> (str/split content #"\n\s*\$\s*\n")
+                     (map str/trim)
+                     (remove str/blank?))]
     records))
 
 
-(defn all-keys [records]
+(defn all-keys
+  "Returns a sorted sequence of all unique keys from a sequence of records."
+  [records]
   (->> records
        (mapcat keys)
        set
        sort))
 
-(defn all-have-same-keys? [records]
-  (let [key-sets (map #(set (keys %)) records)
-        unique-key-sets (set key-sets)]
-    (= 1 (count unique-key-sets))))
-
-(defn all-field-names [records]
+(defn all-field-names
+  "Returns a sorted set of all unique field names (keys) across all records."
+  [records]
   (->> records
        (mapcat keys)
        set
        (into (sorted-set))))
 
-(defn parse-file-into-records [expected-fields filepath]
+(defn parse-file-into-records
+  "Parses a file at `filepath`, validates that all records contain only expected fields.
+   - `expected-fields`: a sequence of field names to validate against.
+   - Returns a map with:
+     :records => list of parsed records (maps),
+     :unique-fields => set of all field names present across records.
+   Throws an exception if any record contains unexpected fields."
+  [expected-fields filepath]
   (let [expected-set (set expected-fields)
         chunks (split-file-into-records filepath)
         records (map parse-record chunks)
@@ -88,88 +108,91 @@
         ;; Find records with unexpected fields
         records-with-unexpected
         (->> indexed-records
-             (filter (fn [[idx record]]
+             (filter (fn [[_ record]]
                        (let [fields (set (keys record))
                              unexpected (set/difference fields expected-set)]
                          (seq unexpected))))
              (map (fn [[idx record]]
                     (let [fields (set (keys record))
                           unexpected (set/difference fields expected-set)]
-                      {:index idx
+                      {:index             idx
                        :unexpected-fields unexpected
-                       :record record}))))]
+                       :record            record}))))]
     (if (seq records-with-unexpected)
       (throw (ex-info "Unexpected fields found in some records"
                       {:filepath filepath
-                       :errors records-with-unexpected}))
+                       :errors   records-with-unexpected}))
       ;; else return records and unique fields
-      {:records records
+      {:records       records
        :unique-fields (all-field-names records)})))
 
 
 (def expected-fields
   ["Acquisition Comments",
-  "Acquisition Date",
-  "Acquisition Type",
-  "Brief Description",
-  "Classification",
-  "Collection Type",
-  "Condition",
-  "Condition Date",
-  "Condition Details",
-  "Conservation Report",
-  "Country Made",
-  "Country Used",
-  "Current Location",
-  "Date Catalogued",
-  "Date Donor Form Sign",
-  "Date Entered into DB",
-  "Date Made",
-  "Date Modified",
-  "Date Used",
-  "Donor Name",
-  "Edition",
-  "File",
-  "History of Object",
-  "Image",
-  "Inscriptions",
-  "Journal Title",
-  "Maker Details",
-  "Maker Name",
-  "Materials",
-  "Museum Code",
-  "Name of Cataloguer",
-  "Name of Data Enterer",
-  "Negative Number",
-  "Object Name",
-  "Other Information",
-  "Other Number",
-  "Pages",
-  "Physical Description",
-  "Place of Publication",
-  "Printer",
-  "Production Method",
-  "Publisher",
-  "Purchase Price",
-  "References",
-  "Restrictions",
-  "Region-State Made",
-  "Region-State Used",
-  "Registration Number",
-  "Series Name",
-  "Series Number",
-  "Size",
-  "Storage Comments",
-  "Storage Location",
-  "Subjects",
-  "Supplementary File",
-  "Title"
-  "Town-Other Made"
-  "Town-Other Used"])
+   "Acquisition Date",
+   "Acquisition Type",
+   "Brief Description",
+   "Classification",
+   "Collection Type",
+   "Condition",
+   "Condition Date",
+   "Condition Details",
+   "Conservation Report",
+   "Country Made",
+   "Country Used",
+   "Current Location",
+   "Date Catalogued",
+   "Date Donor Form Sign",
+   "Date Entered into DB",
+   "Date Made",
+   "Date Modified",
+   "Date Used",
+   "Donor Name",
+   "Edition",
+   "File",
+   "History of Object",
+   "Image",
+   "Inscriptions",
+   "Journal Title",
+   "Maker Details",
+   "Maker Name",
+   "Materials",
+   "Museum Code",
+   "Name of Cataloguer",
+   "Name of Data Enterer",
+   "Negative Number",
+   "Object Name",
+   "Other Information",
+   "Other Number",
+   "Pages",
+   "Physical Description",
+   "Place of Publication",
+   "Printer",
+   "Production Method",
+   "Publisher",
+   "Purchase Price",
+   "References",
+   "Restrictions",
+   "Region-State Made",
+   "Region-State Used",
+   "Registration Number",
+   "Series Name",
+   "Series Number",
+   "Size",
+   "Storage Comments",
+   "Storage Location",
+   "Subjects",
+   "Supplementary File",
+   "Title"
+   "Town-Other Made"
+   "Town-Other Used"])
 
 
 
-(defn write-csv [filepath records]
+(defn write-csv
+  "Writes a sequence of records (maps) to a CSV file at `filepath`.
+   The headers are derived from all keys present in the records."
+  [filepath records]
   (let [headers (all-keys records)]
     (with-open [writer (io/writer filepath)]
       (csv/write-csv writer [(vec headers)])
@@ -177,9 +200,7 @@
         (csv/write-csv writer
                        [(map #(get record % "") headers)])))))
 
-;; Usage example:
-;;
-;;
+
 (comment
   (def text-chunks (split-file-into-records "C:\\Temp\\Iluka History Group\\test.dmp"))
   (println (first text-chunks))
@@ -212,7 +233,7 @@
   (doseq [line (clojure.string/split-lines non-indented-test-chunk)]
     (println (pr-str line)))
   (def records (:records (parse-file-into-records expected-fields "C:\\Temp\\Iluka History Group\\museum.dmp")))
-  (def test-records [{"fred" 1 "bill" 2}{"fred" 1 "bill" 2}])
+  (def test-records [{"fred" 1 "bill" 2} {"fred" 1 "bill" 2}])
   (def one-record (take 1 records))
   (count one-record)
   one-record
